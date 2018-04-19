@@ -58,6 +58,12 @@ const criteria = {
 			e.hasAttribute('data-analytics-category') &&
 			e.hasAttribute('data-analytics-action');
 	},
+	hasVisibilityTracking: function (e) {
+		return criteria.isElement(e) &&
+			e.hasAttribute('data-analytics-category') &&
+			e.hasAttribute('data-analytics-action')
+			e.hasAttribute('data-analytics-track-visible');
+	},
 	isOfType: function (e, type) {
 		return criteria.isElement(e) && e.nodeName.toLowerCase() === type.toLowerCase();
 	},
@@ -87,6 +93,10 @@ const defaultOptions = {
 		filter: (element) => {
 			return criteria.isAnchor(element) || criteria.isButton(element);
 		}
+	},
+	visibilityTracking: {
+		enabled: false,
+		percentageShown: 0.5
 	},
 	exceptionTracking: {
 		enabled: true,
@@ -118,6 +128,7 @@ export class Analytics {
 
 		this._trackClick = this._trackClick.bind(this);
 		this._trackPage = this._trackPage.bind(this);
+		this._trackScroll = this._trackScroll.bind(this);
 	}
 
 	attach(options = defaultOptions) {
@@ -129,6 +140,7 @@ export class Analytics {
 		}
 
 		this._attachClickTracker();
+		this._attachVisibilityTracker();
 		this._attachPageTracker();
 		this._attachExceptionTracker();
 	}
@@ -148,6 +160,7 @@ export class Analytics {
 		ga('create', id, 'auto');
 
 		this._initialized = true;
+		this._trackedElements = [];
 	}
 
 	_attachClickTracker() {
@@ -157,6 +170,43 @@ export class Analytics {
 
 		document.querySelector('body')
 			.addEventListener('click', delegate(this._options.clickTracking.filter, this._trackClick));
+	}
+
+	_attachVisibilityTracker() {
+		if (!this._options.visibilityTracking.enabled) {
+			return;
+		}
+
+		window.addEventListener('scroll', function(e) {
+			var clientHeight = (window.innerHeight || document.documentElement.clientHeight);
+			var clientWidth = (window.innerWidth || document.documentElement.clientWidth);
+
+			document.querySelectorAll('*[data-analytics-track-visible]').forEach(element => {
+				var boundingRect = element.getBoundingClientRect();
+				var totalArea = boundingRect.width * boundingRect.height;
+				var shownHeight = clientHeight;
+				var shownWidth = clientWidth;
+				if (boundingRect.top >= 0) {
+					shownHeight -= boundingRect.top;
+				}
+				if (boundingRect.bottom <= clientHeight) {
+					shownHeight += boundingRect.bottom - clientHeight;
+				}
+				if (boundingRect.left >= 0) {
+					shownWidth -= boundingRect.left;
+				}
+				if (boundingRect.right <= clientWidth) {
+					shownWidth += boundingRect.right - clientWidth;
+				}
+
+				var shownArea = (shownWidth < 0 || shownHeight < 0) ? 0 : shownHeight * shownWidth;
+				if (shownArea / totalArea >= this._options.visibilityTracking.percentageShown &&
+					this._trackedElements.indexOf(element) === -1) {
+					this._trackedElements.push(element);
+					this._trackScroll(element);
+				}
+			});
+		}.bind(this));
 	}
 
 	_attachPageTracker() {
@@ -245,6 +295,25 @@ export class Analytics {
 
 		this._log('debug', `click: category '${tracking.category}', action '${tracking.action}', label '${tracking.label}', value '${tracking.value}'`);
 		ga('send', 'event', tracking.category, tracking.action, tracking.label, tracking.value);
+	}
+
+	_trackScroll(element) {
+		if (!this._initialized) {
+			this._log('warn', "The component has not been initialized. Please call 'init()' before calling 'attach()'.");
+			return;
+		}
+		if (!element || !criteria.hasTrackingInfo(element)) {
+			return
+		};
+
+		const tracking = {
+			action: element.getAttribute('data-analytics-action'),
+			label: element.getAttribute('data-analytics-label'),
+			value: element.getAttribute('data-analytics-value')
+		};
+
+		this._log('debug', `click: category '${tracking.category}', action '${tracking.action}', label '${tracking.label}', value '${tracking.value}'`);
+		ga('send', 'event', 'Scrolling', tracking.action, tracking.label, tracking.value);
 	}
 
 	_trackPage(path, title) {

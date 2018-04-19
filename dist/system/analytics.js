@@ -41,6 +41,10 @@ System.register(['aurelia-dependency-injection', 'aurelia-event-aggregator', 'au
 				hasTrackingInfo: function hasTrackingInfo(e) {
 					return criteria.isElement(e) && e.hasAttribute('data-analytics-category') && e.hasAttribute('data-analytics-action');
 				},
+				hasVisibilityTracking: function hasVisibilityTracking(e) {
+					return criteria.isElement(e) && e.hasAttribute('data-analytics-category') && e.hasAttribute('data-analytics-action');
+					e.hasAttribute('data-analytics-track-visible');
+				},
 				isOfType: function isOfType(e, type) {
 					return criteria.isElement(e) && e.nodeName.toLowerCase() === type.toLowerCase();
 				},
@@ -69,6 +73,10 @@ System.register(['aurelia-dependency-injection', 'aurelia-event-aggregator', 'au
 					filter: function filter(element) {
 						return criteria.isAnchor(element) || criteria.isButton(element);
 					}
+				},
+				visibilityTracking: {
+					enabled: false,
+					percentageShown: 0.5
 				},
 				exceptionTracking: {
 					enabled: true,
@@ -100,6 +108,7 @@ System.register(['aurelia-dependency-injection', 'aurelia-event-aggregator', 'au
 
 					this._trackClick = this._trackClick.bind(this);
 					this._trackPage = this._trackPage.bind(this);
+					this._trackScroll = this._trackScroll.bind(this);
 				}
 
 				Analytics.prototype.attach = function attach() {
@@ -113,6 +122,7 @@ System.register(['aurelia-dependency-injection', 'aurelia-event-aggregator', 'au
 					}
 
 					this._attachClickTracker();
+					this._attachVisibilityTracker();
 					this._attachPageTracker();
 					this._attachExceptionTracker();
 				};
@@ -129,6 +139,7 @@ System.register(['aurelia-dependency-injection', 'aurelia-event-aggregator', 'au
 					ga('create', id, 'auto');
 
 					this._initialized = true;
+					this._trackedElements = [];
 				};
 
 				Analytics.prototype._attachClickTracker = function _attachClickTracker() {
@@ -139,15 +150,53 @@ System.register(['aurelia-dependency-injection', 'aurelia-event-aggregator', 'au
 					document.querySelector('body').addEventListener('click', delegate(this._options.clickTracking.filter, this._trackClick));
 				};
 
+				Analytics.prototype._attachVisibilityTracker = function _attachVisibilityTracker() {
+					if (!this._options.visibilityTracking.enabled) {
+						return;
+					}
+
+					window.addEventListener('scroll', function (e) {
+						var _this = this;
+
+						var clientHeight = window.innerHeight || document.documentElement.clientHeight;
+						var clientWidth = window.innerWidth || document.documentElement.clientWidth;
+
+						document.querySelectorAll('*[data-analytics-track-visible]').forEach(function (element) {
+							var boundingRect = element.getBoundingClientRect();
+							var totalArea = boundingRect.width * boundingRect.height;
+							var shownHeight = clientHeight;
+							var shownWidth = clientWidth;
+							if (boundingRect.top >= 0) {
+								shownHeight -= boundingRect.top;
+							}
+							if (boundingRect.bottom <= clientHeight) {
+								shownHeight += boundingRect.bottom - clientHeight;
+							}
+							if (boundingRect.left >= 0) {
+								shownWidth -= boundingRect.left;
+							}
+							if (boundingRect.right <= clientWidth) {
+								shownWidth += boundingRect.right - clientWidth;
+							}
+
+							var shownArea = shownWidth < 0 || shownHeight < 0 ? 0 : shownHeight * shownWidth;
+							if (shownArea / totalArea >= _this._options.visibilityTracking.percentageShown && _this._trackedElements.indexOf(element) === -1) {
+								_this._trackedElements.push(element);
+								_this._trackScroll(element);
+							}
+						});
+					}.bind(this));
+				};
+
 				Analytics.prototype._attachPageTracker = function _attachPageTracker() {
-					var _this = this;
+					var _this2 = this;
 
 					if (!this._options.pageTracking.enabled) {
 						return;
 					}
 
 					this._eventAggregator.subscribe('router:navigation:success', function (payload) {
-						_this._trackPage(_this._options.pageTracking.getUrl(payload), _this._options.pageTracking.getTitle(payload));
+						_this2._trackPage(_this2._options.pageTracking.getUrl(payload), _this2._options.pageTracking.getTitle(payload));
 					});
 				};
 
@@ -224,6 +273,25 @@ System.register(['aurelia-dependency-injection', 'aurelia-event-aggregator', 'au
 
 					this._log('debug', 'click: category \'' + tracking.category + '\', action \'' + tracking.action + '\', label \'' + tracking.label + '\', value \'' + tracking.value + '\'');
 					ga('send', 'event', tracking.category, tracking.action, tracking.label, tracking.value);
+				};
+
+				Analytics.prototype._trackScroll = function _trackScroll(element) {
+					if (!this._initialized) {
+						this._log('warn', "The component has not been initialized. Please call 'init()' before calling 'attach()'.");
+						return;
+					}
+					if (!element || !criteria.hasTrackingInfo(element)) {
+						return;
+					};
+
+					var tracking = {
+						action: element.getAttribute('data-analytics-action'),
+						label: element.getAttribute('data-analytics-label'),
+						value: element.getAttribute('data-analytics-value')
+					};
+
+					this._log('debug', 'click: category \'' + tracking.category + '\', action \'' + tracking.action + '\', label \'' + tracking.label + '\', value \'' + tracking.value + '\'');
+					ga('send', 'event', 'Scrolling', tracking.action, tracking.label, tracking.value);
 				};
 
 				Analytics.prototype._trackPage = function _trackPage(path, title) {
