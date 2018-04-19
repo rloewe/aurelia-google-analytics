@@ -108,7 +108,7 @@ System.register(['aurelia-dependency-injection', 'aurelia-event-aggregator', 'au
 
 					this._trackClick = this._trackClick.bind(this);
 					this._trackPage = this._trackPage.bind(this);
-					this._trackScroll = this._trackScroll.bind(this);
+					this._trackVisible = this._trackVisible.bind(this);
 				}
 
 				Analytics.prototype.attach = function attach() {
@@ -162,27 +162,29 @@ System.register(['aurelia-dependency-injection', 'aurelia-event-aggregator', 'au
 						var clientWidth = window.innerWidth || document.documentElement.clientWidth;
 
 						document.querySelectorAll('*[data-analytics-track-visible]').forEach(function (element) {
-							var boundingRect = element.getBoundingClientRect();
-							var totalArea = boundingRect.width * boundingRect.height;
-							var shownHeight = clientHeight;
-							var shownWidth = clientWidth;
-							if (boundingRect.top >= 0) {
-								shownHeight -= boundingRect.top;
-							}
-							if (boundingRect.bottom <= clientHeight) {
-								shownHeight += boundingRect.bottom - clientHeight;
-							}
-							if (boundingRect.left >= 0) {
-								shownWidth -= boundingRect.left;
-							}
-							if (boundingRect.right <= clientWidth) {
-								shownWidth += boundingRect.right - clientWidth;
-							}
+							if (_this._trackedElements.indexOf(element) === -1) {
+								var boundingRect = element.getBoundingClientRect();
+								var totalArea = boundingRect.width * boundingRect.height;
+								var shownHeight = clientHeight;
+								var shownWidth = clientWidth;
+								if (boundingRect.top >= 0) {
+									shownHeight -= boundingRect.top;
+								}
+								if (boundingRect.bottom <= clientHeight) {
+									shownHeight += boundingRect.bottom - clientHeight;
+								}
+								if (boundingRect.left >= 0) {
+									shownWidth -= boundingRect.left;
+								}
+								if (boundingRect.right <= clientWidth) {
+									shownWidth += boundingRect.right - clientWidth;
+								}
 
-							var shownArea = shownWidth < 0 || shownHeight < 0 ? 0 : shownHeight * shownWidth;
-							if (shownArea / totalArea >= _this._options.visibilityTracking.percentageShown && _this._trackedElements.indexOf(element) === -1) {
-								_this._trackedElements.push(element);
-								_this._trackScroll(element);
+								var shownArea = shownWidth < 0 || shownHeight < 0 ? 0 : shownHeight * shownWidth;
+								if (shownArea / totalArea >= _this._options.visibilityTracking.percentageShown) {
+									_this._trackedElements.push(element);
+									_this._trackVisible(element);
+								}
 							}
 						});
 					}.bind(this));
@@ -275,7 +277,7 @@ System.register(['aurelia-dependency-injection', 'aurelia-event-aggregator', 'au
 					ga('send', 'event', tracking.category, tracking.action, tracking.label, tracking.value);
 				};
 
-				Analytics.prototype._trackScroll = function _trackScroll(element) {
+				Analytics.prototype._trackVisible = function _trackVisible(element) {
 					if (!this._initialized) {
 						this._log('warn', "The component has not been initialized. Please call 'init()' before calling 'attach()'.");
 						return;
@@ -285,13 +287,14 @@ System.register(['aurelia-dependency-injection', 'aurelia-event-aggregator', 'au
 					};
 
 					var tracking = {
+						category: element.getAttribute('data-analytics-category'),
 						action: element.getAttribute('data-analytics-action'),
 						label: element.getAttribute('data-analytics-label'),
 						value: element.getAttribute('data-analytics-value')
 					};
 
 					this._log('debug', 'click: category \'' + tracking.category + '\', action \'' + tracking.action + '\', label \'' + tracking.label + '\', value \'' + tracking.value + '\'');
-					ga('send', 'event', 'Scrolling', tracking.action, tracking.label, tracking.value);
+					ga('send', 'event', tracking.category, tracking.action, tracking.label, tracking.value);
 				};
 
 				Analytics.prototype._trackPage = function _trackPage(path, title) {
